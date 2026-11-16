@@ -1,0 +1,30 @@
+{
+  "name": "overcast",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Overcast frontend",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "frontend": "live-server frontend --port=5500"
+  },
+  "main": "server.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sfafg/Overcast.git"
+  },
+  "keywords": [],
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/Sfafg/Overcast/issues"
+  },
+  "homepage": "https://github.com/Sfafg/Overcast#readme",
+  "dependencies": {
+    "express": "^5.3.0",
+    "ws": "^8.22.2"
+  },
+  "devDependencies": {
+    "live-server": "^1.2.2",
+    "nodemon": "^3.1.14"
+  }
+}

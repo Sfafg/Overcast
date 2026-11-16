@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Overcast</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header class="app-header">
+        <h1 class="logo">Overcast</h1>
+    </header>
+
+    <main class="workspace">
+        <section id="tab-broadcast" class="column broadcast-column">
+            <div class="card">
+                <div class="row">
+                    <label class="field">Nick
+                        <input type="text" id="hostNick" value="Host" maxlength="32">
+                    </label>
+                    <button type="button" id="startStream">Start Stream</button>
+                </div>
+                <div class="settings-grid">
+                    <label class="slider-field">
+                        <span>Framerate <strong id="hostFpsValue">60 fps</strong></span>
+                        <input id="hostFps" type="range" min="5" max="180" step="1" value="60">
+                    </label>
+                    <label class="slider-field">
+                        <span>Bitrate <strong id="hostBitrateValue">10 Mbps</strong></span>
+                        <input id="hostBitrate" type="range" min="1" max="100" step="1" value="10">
+                    </label>
+                    <label class="slider-field">
+                        <span>Resolution <strong id="hostScaleValue">100%</strong></span>
+                        <input id="hostScale" type="range" min="10" max="100" step="5" value="100">
+                    </label>
+                </div>
+                <div id="ipStatus" class="muted">Discovering ips...</div>
+                <video id="streamPreview" autoplay muted playsinline></video>
+            </div>
+
+            <div class="card">
+                <h2>Broadcast log</h2>
+                <div id="hostLog" class="host-log"></div>
+                <h3>Events</h3>
+                <div id="hostEvents" class="event-log"></div>
+            </div>
+        </section>
+
+        <section id="tab-watch" class="column watch-column">
+            <div class="card watch-toolbar">
+                <label class="field">IP address
+                    <input type="text" id="ipAddress" placeholder="Enter IP">
+                </label>
+                <button type="button" id="watchStream">Watch Stream</button>
+                <button type="button" id="toggleStreamOnly">Streams only</button>
+            </div>
+
+            <div class="card stream-directory-card">
+                <div class="directory-head">
+                    <h2>Available streams</h2>
+                    <button type="button" id="refreshStreams" class="secondary">Refresh</button>
+                </div>
+                <div id="streamDirectory" class="stream-directory">
+                    <div class="muted">Discovering streams...</div>
+                </div>
+            </div>
+
+            <div id="watchSummary" class="watch-summary muted">Not watching any streams.</div>
+            <div id="streams" class="streams"></div>
+            <button type="button" id="exitStreamOnly" class="exit-stream-only">Exit streams only (Esc)</button>
+        </section>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>
