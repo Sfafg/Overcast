@@ -143,6 +143,120 @@ input[type="range"] {
   font-weight: 600;
 }
 
+.codec-priority-section {
+  position: relative;
+  margin: 14px 0 4px;
+}
+
+.codec-priority-section > summary {
+  width: fit-content;
+  color: var(--muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.codec-priority-list {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 5;
+  width: min(380px, calc(100vw - 32px));
+  list-style: none;
+  counter-reset: codec-priority;
+  padding: 8px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 20px rgb(0 0 0 / 25%);
+}
+
+.codec-priority-list li {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  gap: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.codec-priority-list li.is-dragging {
+  opacity: 0.45;
+}
+
+.codec-priority-list li.drop-target {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.codec-drag-handle {
+  display: block;
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+  cursor: grab;
+  background:
+    linear-gradient(currentColor, currentColor) top / 14px 2px,
+    linear-gradient(currentColor, currentColor) center / 14px 2px,
+    linear-gradient(currentColor, currentColor) bottom / 14px 2px;
+  background-repeat: no-repeat;
+}
+
+.codec-drag-handle:active {
+  cursor: grabbing;
+}
+
+.codec-priority-list li::before {
+  counter-increment: codec-priority;
+  content: counter(codec-priority);
+  width: 20px;
+  color: var(--muted);
+}
+
+.codec-priority-list .codec-name {
+  flex: 1;
+  min-width: 46px;
+}
+
+.codec-directions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.codec-capability {
+  padding: 2px 4px;
+  color: var(--muted);
+  font-size: 0.65rem;
+  white-space: nowrap;
+}
+
+.codec-capability.available {
+  color: var(--accent-2);
+}
+
+.codec-decode-only {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.codec-decode-only h4 {
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.codec-decode-only ul {
+  list-style: none;
+}
+
+.codec-decode-only li {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  gap: 6px;
+}
+
 button {
   background: var(--accent);
   border: 1px solid var(--accent);

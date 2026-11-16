@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Overcast</title>
     <link rel="stylesheet" href="styles.css">
 </head>
+
 <body>
     <header class="app-header">
         <h1 class="logo">Overcast</h1>
@@ -34,6 +36,14 @@
                         <input id="hostScale" type="range" min="10" max="100" step="5" value="100">
                     </label>
                 </div>
+                <details id="codecPrioritySection" class="codec-priority-section" hidden>
+                    <summary>Video codec priority</summary>
+                    <ol id="codecPriorityList" class="codec-priority-list"></ol>
+                    <div id="codecDecodeOnlySection" class="codec-decode-only" hidden>
+                        <h4>Decode only</h4>
+                        <ul id="codecDecodeOnlyList"></ul>
+                    </div>
+                </details>
                 <div id="ipStatus" class="muted">Discovering ips...</div>
                 <video id="streamPreview" autoplay muted playsinline></video>
             </div>
@@ -73,4 +83,5 @@
 
     <script src="app.js"></script>
 </body>
+
 </html>

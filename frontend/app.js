@@ -76,6 +76,87 @@ function createPeer(onCandidate) {
 	return peer;
 }
 
+const videoCodecCapabilities =
+	globalThis.RTCRtpSender?.getCapabilities?.("video")?.codecs ?? [];
+const videoDecodeCapabilities =
+	globalThis.RTCRtpReceiver?.getCapabilities?.("video")?.codecs ?? [];
+const codecPriorityStorageKey = "overcast.videoCodecPriority";
+
+function codecFamily(codec) {
+	const mimeType = codec.mimeType?.toLowerCase() ?? "";
+	if (!mimeType.startsWith("video/")) return null;
+	const family = mimeType.slice("video/".length);
+	return ["rtx", "red", "ulpfec"].includes(family) || family.startsWith("flexfec-")
+		? null
+		: family;
+}
+
+function supportedVideoCodecFamilies() {
+	return [
+		...new Set(
+			videoCodecCapabilities.map(codecFamily).filter(Boolean),
+		),
+	];
+}
+
+function supportedVideoDecodeFamilies() {
+	return [
+		...new Set(videoDecodeCapabilities.map(codecFamily).filter(Boolean)),
+	];
+}
+
+function decodeOnlyVideoFamilies() {
+	const encodable = new Set(supportedVideoCodecFamilies());
+	return supportedVideoDecodeFamilies().filter((family) => !encodable.has(family));
+}
+
+function loadCodecPriority() {
+	const supported = supportedVideoCodecFamilies();
+	try {
+		const saved = JSON.parse(localStorage.getItem(codecPriorityStorageKey));
+		if (Array.isArray(saved)) {
+			return [
+				...saved.filter((family) => supported.includes(family)),
+				...supported.filter((family) => !saved.includes(family)),
+			];
+		}
+	} catch { }
+	return supported;
+}
+
+function preferredVideoCodecs() {
+	const prioritized = codecPriority.flatMap((family) =>
+		videoCodecCapabilities.filter((codec) => codecFamily(codec) === family),
+	);
+	const auxiliary = videoCodecCapabilities.filter(
+		(codec) => !codecFamily(codec),
+	);
+	return [...prioritized, ...auxiliary];
+}
+
+function applyVideoCodecPreferences(transceiver) {
+	if (!transceiver?.setCodecPreferences || !videoCodecCapabilities.length) return;
+	transceiver.setCodecPreferences(preferredVideoCodecs());
+}
+
+function addVideoTrack(pc, track, stream) {
+	const sender = pc.addTrack(track, stream);
+	const transceiver = pc
+		.getTransceivers()
+		.find((candidate) => candidate.sender === sender);
+	applyVideoCodecPreferences(transceiver);
+	return sender;
+}
+
+function codecLabel(family) {
+	return (
+		{ h264: "H.264", h265: "H.265 / HEVC", vp8: "VP8", vp9: "VP9", av1: "AV1" }[family] ??
+		family.toUpperCase()
+	);
+}
+
+let codecPriority = loadCodecPriority();
+
 async function addRemoteCandidate(peer, candidate) {
 	if (!peer.pc.remoteDescription) {
 		peer.pending.push(candidate);
@@ -122,6 +203,10 @@ const hostScaleInput = document.getElementById("hostScale");
 const hostFpsValue = document.getElementById("hostFpsValue");
 const hostBitrateValue = document.getElementById("hostBitrateValue");
 const hostScaleValue = document.getElementById("hostScaleValue");
+const codecPrioritySection = document.getElementById("codecPrioritySection");
+const codecPriorityList = document.getElementById("codecPriorityList");
+const codecDecodeOnlySection = document.getElementById("codecDecodeOnlySection");
+const codecDecodeOnlyList = document.getElementById("codecDecodeOnlyList");
 
 let videoSource = null;
 let hostWs = null;
@@ -210,7 +295,7 @@ function connectHost() {
 		for (const peer of hostPeers.values()) {
 			try {
 				peer.pc.close();
-			} catch {}
+			} catch { }
 		}
 		hostPeers.clear();
 		knownClients.clear();
@@ -278,6 +363,10 @@ async function handleHostMessage(msg) {
 			await peer.pc.setRemoteDescription(msg.data);
 			await flushCandidates(peer);
 			await applyPeerSettings(msg.from);
+			if (peer.renegotiateRequested) {
+				peer.renegotiateRequested = false;
+				await negotiate(msg.from);
+			}
 			break;
 		}
 
@@ -303,8 +392,8 @@ function getHostPeer(clientId) {
 
 	if (videoSource) {
 		videoSource
-			.getTracks()
-			.forEach((track) => peer.pc.addTrack(track, videoSource));
+			.getVideoTracks()
+			.forEach((track) => addVideoTrack(peer.pc, track, videoSource));
 	}
 
 	peer.pc.onconnectionstatechange = () => {
@@ -323,13 +412,16 @@ function closeHostPeer(clientId) {
 	if (!peer) return;
 	try {
 		peer.pc.close();
-	} catch {}
+	} catch { }
 	hostPeers.delete(clientId);
 }
 
 async function negotiate(clientId) {
 	const peer = getHostPeer(clientId);
-	if (peer.negotiating) return;
+	if (peer.negotiating || peer.pc.signalingState !== "stable") {
+		peer.renegotiateRequested = true;
+		return;
+	}
 	peer.negotiating = true;
 	try {
 		const offer = await peer.pc.createOffer();
@@ -439,6 +531,90 @@ function updateHostSettings() {
 	}, 120);
 }
 
+function renderCodecPriority() {
+	const decodeOnly = decodeOnlyVideoFamilies();
+	codecPrioritySection.hidden = !codecPriority.length && !decodeOnly.length;
+	codecPriorityList.replaceChildren();
+	codecPriority.forEach((family, index) => {
+		const item = document.createElement("li");
+		const handle = document.createElement("span");
+		const name = document.createElement("span");
+		const capabilities = document.createElement("span");
+		item.dataset.index = index;
+		handle.className = "codec-drag-handle";
+		handle.draggable = true;
+		handle.title = "Drag to reorder";
+		handle.setAttribute("aria-hidden", "true");
+		name.className = "codec-name";
+		name.textContent = codecLabel(family);
+		capabilities.className = "codec-directions";
+		capabilities.append(
+			createCodecCapability("Encode", true),
+			createCodecCapability(
+				"Decode",
+				supportedVideoDecodeFamilies().includes(family),
+			),
+		);
+		item.append(handle, name, capabilities);
+		codecPriorityList.append(item);
+	});
+
+	codecDecodeOnlySection.hidden = !decodeOnly.length;
+	codecDecodeOnlyList.replaceChildren();
+	for (const family of decodeOnly) {
+		const item = document.createElement("li");
+		const name = document.createElement("span");
+		const capabilities = document.createElement("span");
+		name.className = "codec-name";
+		name.textContent = codecLabel(family);
+		capabilities.className = "codec-directions";
+		capabilities.append(
+			createCodecCapability("Encode", false),
+			createCodecCapability("Decode", true),
+		);
+		item.append(name, capabilities);
+		codecDecodeOnlyList.append(item);
+	}
+}
+
+function createCodecCapability(direction, available) {
+	const status = document.createElement("span");
+	status.className = available ? "codec-capability available" : "codec-capability";
+	status.textContent = available ? direction : `No ${direction.toLowerCase()}`;
+	status.setAttribute(
+		"aria-label",
+		`${direction} ${available ? "available" : "unavailable"}`,
+	);
+	return status;
+}
+
+function reorderCodecPriority(fromIndex, toIndex) {
+	if (
+		fromIndex === toIndex ||
+		fromIndex < 0 ||
+		toIndex < 0 ||
+		fromIndex >= codecPriority.length ||
+		toIndex >= codecPriority.length
+	) {
+		return;
+	}
+	const [family] = codecPriority.splice(fromIndex, 1);
+	codecPriority.splice(toIndex, 0, family);
+	try {
+		localStorage.setItem(codecPriorityStorageKey, JSON.stringify(codecPriority));
+	} catch { }
+	renderCodecPriority();
+
+	for (const [clientId, peer] of hostPeers) {
+		for (const transceiver of peer.pc.getTransceivers()) {
+			if (transceiver.sender.track?.kind === "video") {
+				applyVideoCodecPreferences(transceiver);
+			}
+		}
+		negotiate(clientId);
+	}
+}
+
 async function applyHostWants(clientId, wants, nick) {
 	const client = knownClients.get(clientId);
 	if (client) client.wants = wants ?? {};
@@ -446,10 +622,8 @@ async function applyHostWants(clientId, wants, nick) {
 	await applyPeerSettings(clientId);
 	const effective = effectiveSettingsFor(clientId);
 	appendHostEvent(
-		`${nick ?? "Viewer"} requested ${wants?.fps ?? 60} fps, ${
-			wants?.bitrateMbps ?? 10
-		} Mbps, ${wants?.scalePercent ?? 100}% -> effective ${effective.fps} fps, ${
-			effective.bitrateMbps
+		`${nick ?? "Viewer"} requested ${wants?.fps ?? 60} fps, ${wants?.bitrateMbps ?? 10
+		} Mbps, ${wants?.scalePercent ?? 100}% -> effective ${effective.fps} fps, ${effective.bitrateMbps
 		} Mbps, ${effective.scalePercent}%`,
 	);
 }
@@ -483,7 +657,7 @@ async function shareScreen() {
 			await sender.replaceTrack(track);
 			await applyPeerSettings(clientId);
 		} else if (track) {
-			peer.pc.addTrack(track, source);
+			addVideoTrack(peer.pc, track, source);
 			await negotiate(clientId);
 		}
 	}
@@ -525,16 +699,15 @@ function renderHostLog(rows, totals) {
 		.map(
 			(row) => `<div class="viewer-row">
 				<span title="${escapeHtml(row.client.nick)}"><span class="label">Nick</span>${escapeHtml(
-					row.client.nick,
-				)}</span>
+				row.client.nick,
+			)}</span>
 				<span><span class="label">Codec</span>${escapeHtml(row.codec)}</span>
 				<span><span class="label">Resolution</span>${escapeHtml(row.dims)}</span>
 				<span><span class="label">FPS</span>${escapeHtml(String(row.fps))}</span>
 				<span><span class="label">Out / In</span>${formatBps(row.out)} / ${formatBps(
-					row.in,
-				)}</span>
-				<span><span class="label">Effective</span>${row.effective.fps} fps / ${
-					row.effective.bitrateMbps
+				row.in,
+			)}</span>
+				<span><span class="label">Effective</span>${row.effective.fps} fps / ${row.effective.bitrateMbps
 				} Mbps / ${row.effective.scalePercent}%</span>
 			</div>`,
 		)
@@ -715,9 +888,8 @@ function renderStreamDirectory() {
 					<span class="muted">${escapeHtml(streamResolutionLabel(stream.info))}</span>
 				</div>
 				<button type="button" class="secondary" data-watch-server="${escapeHtml(
-					stream.server,
-				)}" data-watch-host="${escapeHtml(stream.id)}" ${
-					watching ? "disabled" : ""
+				stream.server,
+			)}" data-watch-host="${escapeHtml(stream.id)}" ${watching ? "disabled" : ""
 				}>${watching ? "Watching" : "Watch"}</button>
 			</div>`;
 		})
@@ -977,7 +1149,7 @@ function getViewerStream(conn, hostId, nick, info) {
 	pc.ontrack = (event) => {
 		tile.video.srcObject =
 			event.streams[0] ?? new MediaStream([event.track]);
-		tile.video.play?.().catch(() => {});
+		tile.video.play?.().catch(() => { });
 	};
 
 	pc.onconnectionstatechange = () => {
@@ -1042,7 +1214,7 @@ function removeViewerStream(stream) {
 	stream.conn.streams.delete(stream.key);
 	try {
 		stream.pc.close();
-	} catch {}
+	} catch { }
 	stream.tile.el.remove();
 	updateWatchSummary();
 }
@@ -1346,6 +1518,42 @@ for (const input of [hostFpsInput, hostBitrateInput, hostScaleInput]) {
 	input.addEventListener("input", updateHostSettings);
 }
 
+codecPriorityList.addEventListener("dragstart", (event) => {
+	const item = event.target.closest("li[data-index]");
+	if (!item || !event.target.closest(".codec-drag-handle")) {
+		event.preventDefault();
+		return;
+	}
+	event.dataTransfer.effectAllowed = "move";
+	event.dataTransfer.setData("text/plain", item.dataset.index);
+	item.classList.add("is-dragging");
+});
+
+codecPriorityList.addEventListener("dragover", (event) => {
+	const item = event.target.closest("li[data-index]");
+	if (!item) return;
+	event.preventDefault();
+	event.dataTransfer.dropEffect = "move";
+	codecPriorityList
+		.querySelectorAll(".drop-target")
+		.forEach((candidate) => candidate.classList.remove("drop-target"));
+	item.classList.add("drop-target");
+});
+
+codecPriorityList.addEventListener("drop", (event) => {
+	const item = event.target.closest("li[data-index]");
+	if (!item) return;
+	event.preventDefault();
+	const fromIndex = Number(event.dataTransfer.getData("text/plain"));
+	reorderCodecPriority(fromIndex, Number(item.dataset.index));
+});
+
+codecPriorityList.addEventListener("dragend", () => {
+	codecPriorityList
+		.querySelectorAll(".is-dragging, .drop-target")
+		.forEach((item) => item.classList.remove("is-dragging", "drop-target"));
+});
+
 startStreamButton.addEventListener("click", () => {
 	startStream().catch((err) => console.error(err));
 });
@@ -1392,6 +1600,7 @@ window.addEventListener("resize", () => {
 });
 
 updateHostSettings();
+renderCodecPriority();
 connectHost();
 setInterval(() => {
 	updateHostLog().catch((err) => console.warn("Host log error:", err));
